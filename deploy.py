@@ -21,41 +21,44 @@ SIZE_ID = 't2.micro'
 REGION_ID = 'us-east-1'  # north virginia
 
 # create instance
+print('credentials')
 cls = get_driver(Provider.EC2)
 driver = cls(ACCESS_KEY, SECRET_KEY, region=REGION_ID)
 
+print('getting sizes and images')
 sizes = driver.list_sizes()
 images = driver.list_images()
 
 size = [s for s in sizes if s.id == SIZE_ID][0]
 image = [i for i in images if i.id == IMAGE_ID][0]
 
+print('creating node')
 node = driver.create_node(name='libcloud-test00', image=image, size=size)
+print('created:', node)
 
 ## Load Balancer
+print('elb credentials')
 LB_NAME = 'libcloud-lbtest00'
 elb_cls = elb_get_driver(ELB_Provider.ELB)
 elb_driver = elb_cls(ACCESS_KEY, SECRET_KEY, region=REGION_ID)
 
+print('list balancers')
 balancers = elb_driver.list_balancers()
 print(balancers)
 
 if len(balancers) == 0:   # create balancer
-    members = (Member(None, '192.168.88.1', 8080),
-               Member(None, '192.168.88.2', 8080))
+    print('creating balancer')
     new_balancer = elb_driver.create_balancer(
         name=LB_NAME,
         algorithm=Algorithm.ROUND_ROBIN,
         port=80,
         protocol='http',
-        members=members
+        members=None
     )
-    print('created:')
-    print(new_balancer)
+    elb_driver.balancer_attach_compute_node(new_balancer, node)
+    print('created:', new_balancer)
 
 
 # allocate and associate elastic IP
 # elastic_ip = driver.ex_allocate_address()
 # driver.ex_associate_address_with_node(node, elastic_ip)
-
-
