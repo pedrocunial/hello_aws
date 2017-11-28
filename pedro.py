@@ -1,51 +1,113 @@
 import boto3
-from botocore.exceptions import ClientError
 
+from botocore.exceptions import ClientError
+from random import choice
+
+def delete_sg(client, id_, name):
+    try:
+        res = client.delete_security_group(
+            GroupId=str(id_),
+            GroupName=str(name),
+            DryRun=False
+        )
+        return res
+    except ClientError as e:
+        print(e)
+        return False
+
+
+def create_sg(client, name, desc, vpc_id):
+    try:
+
+        res = ec2.create_security_group(
+            GroupName=name,
+            Description=desc,
+            VpcId=vpc_id
+        )
+        security_group_id = res['GroupId']
+        print('Security group created {} in vpc {}'.format(security_group_id, vpc_id))
+
+        data = ec2.authorize_security_group_ingress(
+            GroupId=security_group_id,
+            IpPermissions=[
+                {'IpProtocol': 'tcp',
+                'FromPort': 80,
+                'ToPort': 80,
+                'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]},
+                {'IpProtocol': 'tcp',
+                'FromPort': 22,
+                'ToPort': 22,
+                'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]}
+            ])
+
+        print('Ingress Successfully set:', data)
+        return security_group_id
+    except ClientError as e:
+        print(e)
+        return False
+
+
+def create_instance(client, image_id, type_, sg_id, n, zones):
+    '''
+    create ec2 instance
+    note that this function could have used the Min and MaxCount
+    args to create multiple instances in one request, but they
+    would all be in the same availability zone, which is not wanted
+    '''
+    instances = []
+    try:
+        for i in range(n):
+            instance = client.run_instances(
+                ImageId=str(image_id),
+                InstanceType=str(type_),
+                Placement = { 'AvailabilityZone': str(choice(zones)) },
+                MinCount=1,
+                MaxCount=1,
+                DryRun=False,
+                SecurityGroupIds=[ str(sg_id) ]
+            )
+            print('Created Instance:', instance)
+            instances.append(instance)
+    except ClientError as e:
+        print(e)
+    finally:
+        return instances
+
+#### Begin of script
+ec2 = boto3.client('ec2')
+
+### Configure Security Groups
+res = ec2.describe_vpcs()
+vpc_id = res.get('Vpcs', [{}])[0].get('VpcId', '')
 
 SG_NAME = 'apache_server_inbound'
 SG_DESC = 'Security group for defining inbound ports for the apache server'
 
-
-def delete_sg(sg_id):
-
-
-
-ec2 = boto3.client('ec2')
-
-res = ec2.describe_vpcs()
-vpc_id = res.get('Vpcs', [{}])[0].get('VpcId', '')
-
-
 # delete security group with name if exists
 all_sg = ec2.describe_security_groups()
 for sg in all_sg['SecurityGroups']:
+    sgname = sg['GroupName']
+    if sgname.strip() == SG_NAME:
+        succ = delete_sg(ec2, sg['GroupId'], sgname)
+        if not succ:
+            print('Deleting SG {} failed')
+            exit(0)
 
-
-try:
-
-    res = ec2.create_security_group(
-        GroupName=SG_NAME,
-        Description=SG_DESC,
-        VpcId=vpc_id
-    )
-    security_group_id = res['GroupId']
-    print('Security group created {} in vpc {}'.format(security_group_id, vpc_id))
-
-    data = ec2.authorize_security_group_ingress(
-        GroupId=security_group_id,
-        IpPermissions=[
-            {'IpProtocol': 'tcp',
-             'FromPort': 80,
-             'ToPort': 80,
-             'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]},
-            {'IpProtocol': 'tcp',
-             'FromPort': 22,
-             'ToPort': 22,
-             'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]}
-        ])
-
-    print('Ingress Successfully set:', data)
-
-except ClientError as e:
-    print(e)
+# create new security groups
+sg_id = create_sg(ec2, SG_NAME, SG_DESC, vpc_id)
+if not sg_id:
+    print('Failed to create SG with name', SG_NAME)
     exit(0)
+
+### Create instance using custom image and add it to the SG
+IMAGE_ID = 'ami-5f990425'
+INSTANCE_TYPE = 't2.micro'
+NUM_INSTANCES = 5
+ZONES = [ 'us-east-1a', 'us-east-1b', 'us-east-1c' ]  # different zones for the elb
+
+# resource = boto3.resource('ec2', region_name=ZONE)
+
+instances = create_instance(ec2, IMAGE_ID, INSTANCE_TYPE, sg_id,
+                       NUM_INSTANCES, ZONES)
+if len(instances) < NUM_INSTANCES:
+    print('Failed to create instances with image', IMAGE_ID)
