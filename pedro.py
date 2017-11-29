@@ -75,6 +75,42 @@ def create_instance(client, image_id, type_, sg_id, n, zones):
         return instances
 
 
+def create_elb(client, name, zones, iport, lbport):
+    '''
+    create new elastic load balancer
+    returns the DNS name for the ELB
+    '''
+    try:
+        res = client.create_load_balancer(
+            LoadBalancerName=name,
+            Listeners=[
+                {'Protocol': 'HTTP',
+                 'LoadBalancerPort': lbport,
+                 'InstancePort': iport}
+            ],
+            AvailabilityZones=zones
+        )
+        return res['DNSName']
+    except ClientError as e:
+        print(e)
+        return None
+
+
+def add_instances_to_elb(client, elb, instances):
+    '''
+    add listed instances to elb by their ids
+    '''
+    try:
+        res = client.register_instances_with_load_balancer(
+            LoadBalancerName=elb,
+            Instances=instances
+        )
+        return res
+    except ClientError as e:
+        print(e)
+        return None
+
+
 # security group
 SG_NAME = 'apache_server_inbound'
 SG_DESC = 'Security group for defining inbound ports for the apache server'
@@ -84,6 +120,11 @@ IMAGE_ID = 'ami-5f990425'
 INSTANCE_TYPE = 't2.micro'
 NUM_INSTANCES = 5
 ZONES = [ 'us-east-1a', 'us-east-1b', 'us-east-1c' ]  # different zones for the elb
+
+# ELB
+I_PORT = 80
+LB_PORT = 80
+LB_NAME = 'gilftl-loadbalancer'
 
 if __name__ == '__main__':
     #### Begin of script
@@ -117,3 +158,18 @@ if __name__ == '__main__':
                         NUM_INSTANCES, ZONES)
     if len(instances) < NUM_INSTANCES:
         print('Failed to create instances with image', IMAGE_ID)
+
+
+    ### ElasticLoadBalancing (ELB)
+    elb = boto3.client('elb')
+
+    dns_name = create_elb(elb, LB_NAME, ZONES, I_PORT, LB_PORT)
+    if not dns_name:
+        print('Failed creating LB with name', LB_NAME)
+        exit(0)
+
+    instance_ids = [ {'InstanceId': i['Instances'][0]['InstanceId']} for i in instances ]
+    print(instance_ids)
+    inst = add_instances_to_elb(elb, LB_NAME, instance_ids)
+    if not inst:
+        print('Failed adding instances {} to existing ELB'.format(instance_ids))
