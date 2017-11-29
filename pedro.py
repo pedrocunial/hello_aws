@@ -4,6 +4,7 @@ from botocore.exceptions import ClientError
 from random import choice
 
 def delete_sg(client, id_, name):
+    ''' delete security group '''
     try:
         res = client.delete_security_group(
             GroupId=str(id_),
@@ -17,8 +18,8 @@ def delete_sg(client, id_, name):
 
 
 def create_sg(client, name, desc, vpc_id):
+    ''' create security group with given name, description and vpc_id '''
     try:
-
         res = ec2.create_security_group(
             GroupName=name,
             Description=desc,
@@ -73,41 +74,46 @@ def create_instance(client, image_id, type_, sg_id, n, zones):
     finally:
         return instances
 
-#### Begin of script
-ec2 = boto3.client('ec2')
 
-### Configure Security Groups
-res = ec2.describe_vpcs()
-vpc_id = res.get('Vpcs', [{}])[0].get('VpcId', '')
-
+# security group
 SG_NAME = 'apache_server_inbound'
 SG_DESC = 'Security group for defining inbound ports for the apache server'
 
-# delete security group with name if exists
-all_sg = ec2.describe_security_groups()
-for sg in all_sg['SecurityGroups']:
-    sgname = sg['GroupName']
-    if sgname.strip() == SG_NAME:
-        succ = delete_sg(ec2, sg['GroupId'], sgname)
-        if not succ:
-            print('Deleting SG {} failed')
-            exit(0)
-
-# create new security groups
-sg_id = create_sg(ec2, SG_NAME, SG_DESC, vpc_id)
-if not sg_id:
-    print('Failed to create SG with name', SG_NAME)
-    exit(0)
-
-### Create instance using custom image and add it to the SG
+# instance
 IMAGE_ID = 'ami-5f990425'
 INSTANCE_TYPE = 't2.micro'
 NUM_INSTANCES = 5
 ZONES = [ 'us-east-1a', 'us-east-1b', 'us-east-1c' ]  # different zones for the elb
 
-# resource = boto3.resource('ec2', region_name=ZONE)
+if __name__ == '__main__':
+    #### Begin of script
+    ec2 = boto3.client('ec2')
 
-instances = create_instance(ec2, IMAGE_ID, INSTANCE_TYPE, sg_id,
-                       NUM_INSTANCES, ZONES)
-if len(instances) < NUM_INSTANCES:
-    print('Failed to create instances with image', IMAGE_ID)
+    ### Configure Security Groups
+    res = ec2.describe_vpcs()
+    vpc_id = res.get('Vpcs', [{}])[0].get('VpcId', '')
+
+
+    # delete security group with name if exists
+    all_sg = ec2.describe_security_groups()
+    for sg in all_sg['SecurityGroups']:
+        sgname = sg['GroupName']
+        if sgname.strip() == SG_NAME:
+            succ = delete_sg(ec2, sg['GroupId'], sgname)
+            if not succ:
+                print('Deleting SG {} failed')
+                exit(0)
+
+    # create new security groups
+    sg_id = create_sg(ec2, SG_NAME, SG_DESC, vpc_id)
+    if not sg_id:
+        print('Failed to create SG with name', SG_NAME)
+        exit(0)
+
+    ### Create instance using custom image and add it to the SG
+    # resource = boto3.resource('ec2', region_name=ZONE)
+
+    instances = create_instance(ec2, IMAGE_ID, INSTANCE_TYPE, sg_id,
+                        NUM_INSTANCES, ZONES)
+    if len(instances) < NUM_INSTANCES:
+        print('Failed to create instances with image', IMAGE_ID)
