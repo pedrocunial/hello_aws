@@ -93,7 +93,7 @@ def create_elb(client, name, zones, iport, lbport):
         return res['DNSName']
     except ClientError as e:
         print(e)
-        return None
+        return False
 
 
 def add_instances_to_elb(client, elb, instances):
@@ -108,7 +108,7 @@ def add_instances_to_elb(client, elb, instances):
         return res
     except ClientError as e:
         print(e)
-        return None
+        return False
 
 
 # security group
