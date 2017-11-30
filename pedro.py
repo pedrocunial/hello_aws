@@ -1,6 +1,7 @@
 import boto3
 import pickle
 
+from botocore.client import Config
 from pathlib import Path
 from botocore.exceptions import ClientError
 from random import choice
@@ -119,7 +120,7 @@ def add_instances_to_elb(client, elb, instances):
 
 
 def save_service_data(instance_ids, sg_id, vpc_id, lb_name):
-    print('saving service data into {}'.format(Path.home()))
+    print('saving service data into {}/.pccdata.p'.format(Path.home()))
     pickle.dump({
         'instance_ids': instance_ids,
         'sg_id': sg_id,
@@ -131,7 +132,8 @@ def save_service_data(instance_ids, sg_id, vpc_id, lb_name):
 def main():
     #### Begin of script
     try:
-        ec2 = boto3.client('ec2')
+        config = Config(connect_timeout=50, read_timeout=70)  # insper net...
+        ec2 = boto3.client('ec2', config=config)
     except:
         print('Have you configured awscli? Try $ aws configure')
         return
@@ -164,7 +166,7 @@ def main():
 
 
     ### ElasticLoadBalancing (ELB)
-    elb = boto3.client('elb')
+    elb = boto3.client('elb', config=config)
 
     dns_name = create_elb(elb, LB_NAME, ZONES, I_PORT, LB_PORT)
     if not dns_name:
