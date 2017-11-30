@@ -1,7 +1,10 @@
 import boto3
+import pickle
 
+from pathlib import Path
 from botocore.exceptions import ClientError
 from random import choice
+from util.constants import *
 
 def delete_sg(client, id_, name):
     ''' delete security group '''
@@ -20,7 +23,7 @@ def delete_sg(client, id_, name):
 def create_sg(client, name, desc, vpc_id):
     ''' create security group with given name, description and vpc_id '''
     try:
-        res = ec2.create_security_group(
+        res = client.create_security_group(
             GroupName=name,
             Description=desc,
             VpcId=vpc_id
@@ -28,17 +31,17 @@ def create_sg(client, name, desc, vpc_id):
         security_group_id = res['GroupId']
         print('Security group created {} in vpc {}'.format(security_group_id, vpc_id))
 
-        data = ec2.authorize_security_group_ingress(
+        data = client.authorize_security_group_ingress(
             GroupId=security_group_id,
             IpPermissions=[
                 {'IpProtocol': 'tcp',
-                'FromPort': 80,
-                'ToPort': 80,
-                'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]},
+                 'FromPort': 80,
+                 'ToPort': 80,
+                 'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]},
                 {'IpProtocol': 'tcp',
-                'FromPort': 22,
-                'ToPort': 22,
-                'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]}
+                 'FromPort': 22,
+                 'ToPort': 22,
+                 'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]}
             ])
 
         print('Ingress Successfully set:', data)
@@ -111,29 +114,22 @@ def add_instances_to_elb(client, elb, instances):
         return False
 
 
-# security group
-SG_NAME = 'apache_server_inbound'
-SG_DESC = 'Security group for defining inbound ports for the apache server'
+def save_service_data(instance_ids, sg_id, vpc_id, lb_name):
+    pickle.dump({
+        'instance_ids': instance_ids,
+        'sg_id': sg_id,
+        'vpc_id': vpc_id,
+        'lb_name': lb_name,
+    }, Path('{}/.pccdata.p'.format(Path.home())).open('wb'))
 
-# instance
-IMAGE_ID = 'ami-5f990425'
-INSTANCE_TYPE = 't2.micro'
-NUM_INSTANCES = 5
-ZONES = [ 'us-east-1a', 'us-east-1b', 'us-east-1c' ]  # different zones for the elb
 
-# ELB
-I_PORT = 80
-LB_PORT = 80
-LB_NAME = 'gilftl-loadbalancer'
-
-if __name__ == '__main__':
+def main():
     #### Begin of script
     ec2 = boto3.client('ec2')
 
     ### Configure Security Groups
     res = ec2.describe_vpcs()
     vpc_id = res.get('Vpcs', [{}])[0].get('VpcId', '')
-
 
     # delete security group with name if exists
     all_sg = ec2.describe_security_groups()
@@ -142,7 +138,7 @@ if __name__ == '__main__':
         if sgname.strip() == SG_NAME:
             succ = delete_sg(ec2, sg['GroupId'], sgname)
             if not succ:
-                print('Deleting SG {} failed')
+                print('Deleting SG {} failed'.format(sgname))
                 exit(0)
 
     # create new security groups
@@ -152,8 +148,6 @@ if __name__ == '__main__':
         exit(0)
 
     ### Create instance using custom image and add it to the SG
-    # resource = boto3.resource('ec2', region_name=ZONE)
-
     instances = create_instance(ec2, IMAGE_ID, INSTANCE_TYPE, sg_id,
                         NUM_INSTANCES, ZONES)
     if len(instances) < NUM_INSTANCES:
@@ -168,8 +162,13 @@ if __name__ == '__main__':
         print('Failed creating LB with name', LB_NAME)
         exit(0)
 
-    instance_ids = [ {'InstanceId': i['Instances'][0]['InstanceId']} for i in instances ]
-    print(instance_ids)
+    instance_ids = [{'InstanceId': i['Instances'][0]['InstanceId']} for i in instances]
     inst = add_instances_to_elb(elb, LB_NAME, instance_ids)
     if not inst:
         print('Failed adding instances {} to existing ELB'.format(instance_ids))
+
+    save_service_data(instance_ids, sg_id, vpc_id, LB_NAME)
+
+
+if __name__ == '__main__':
+    main()

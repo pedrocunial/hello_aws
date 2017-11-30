@@ -3,6 +3,7 @@ import boto3
 from botocore.exceptions import ClientError
 from pedro import LB_NAME, SG_NAME
 from pprint import pprint
+from pathlib import Path
 
 
 def delete_elb(client, name):
@@ -42,6 +43,9 @@ def cleanup():
 
     succ = delete_sg_instances(ec2, 'apache_server_inbound')
     res = delete_elb(elb, LB_NAME)
+
+    # remove data file
+    Path('{}/.pccdata.p'.format(Path.home())).unlink()
     print(res)
 
 
