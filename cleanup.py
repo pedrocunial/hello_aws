@@ -38,8 +38,12 @@ def delete_sg_instances(client, sg_name):
 
 
 def cleanup():
-    elb = boto3.client('elb')
-    ec2 = boto3.client('ec2')
+    try:
+        elb = boto3.client('elb')
+        ec2 = boto3.client('ec2')
+    except:
+        print('Have you configured awscli? Try $ aws configure')
+        return
 
     succ = delete_sg_instances(ec2, 'apache_server_inbound')
     res = delete_elb(elb, LB_NAME)

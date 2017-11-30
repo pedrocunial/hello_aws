@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 from random import choice
 from util.constants import *
 
+
 def delete_sg(client, id_, name):
     ''' delete security group '''
     try:
@@ -29,7 +30,7 @@ def create_sg(client, name, desc, vpc_id):
             VpcId=vpc_id
         )
         security_group_id = res['GroupId']
-        print('Security group created {} in vpc {}'.format(security_group_id, vpc_id))
+        print('security group created {} in vpc {}'.format(security_group_id, vpc_id))
 
         data = client.authorize_security_group_ingress(
             GroupId=security_group_id,
@@ -44,7 +45,7 @@ def create_sg(client, name, desc, vpc_id):
                  'IpRanges': [{ 'CidrIp': '0.0.0.0/0' }]}
             ])
 
-        print('Ingress Successfully set:', data)
+        print('ingress Successfully set for SG with id', security_group_id)
         return security_group_id
     except ClientError as e:
         print(e)
@@ -70,7 +71,7 @@ def create_instance(client, image_id, type_, sg_id, n, zones):
                 DryRun=False,
                 SecurityGroupIds=[ str(sg_id) ]
             )
-            print('Created Instance:', instance)
+            print('created Instance:', instance['Instances'][0]['InstanceId'])
             instances.append(instance)
     except ClientError as e:
         print(e)
@@ -93,6 +94,7 @@ def create_elb(client, name, zones, iport, lbport):
             ],
             AvailabilityZones=zones
         )
+        print('created elasic load balancer with name', name)
         return res['DNSName']
     except ClientError as e:
         print(e)
@@ -108,6 +110,8 @@ def add_instances_to_elb(client, elb, instances):
             LoadBalancerName=elb,
             Instances=instances
         )
+        print('added {} instances to loadbalancer {}'\
+              .format(len(instances), elb))
         return res
     except ClientError as e:
         print(e)
@@ -115,6 +119,7 @@ def add_instances_to_elb(client, elb, instances):
 
 
 def save_service_data(instance_ids, sg_id, vpc_id, lb_name):
+    print('saving service data into {}'.format(Path.home()))
     pickle.dump({
         'instance_ids': instance_ids,
         'sg_id': sg_id,
@@ -125,7 +130,11 @@ def save_service_data(instance_ids, sg_id, vpc_id, lb_name):
 
 def main():
     #### Begin of script
-    ec2 = boto3.client('ec2')
+    try:
+        ec2 = boto3.client('ec2')
+    except:
+        print('Have you configured awscli? Try $ aws configure')
+        return
 
     ### Configure Security Groups
     res = ec2.describe_vpcs()

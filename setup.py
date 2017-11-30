@@ -8,6 +8,7 @@ setup(
         'Click',
         'boto3',
         'pathlib',
+        'awscli',
     ],
     entry_points='''
     [console_scripts]
